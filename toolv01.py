@@ -10,6 +10,9 @@ import time
 from PIL import Image
 
 # handle nested iframes
+SCROLL_PAUSE_TIME = 0.5
+SCROLL_AMOUNT = 4
+
 
 class advert:
 	"""docstring for advert"""
@@ -23,7 +26,6 @@ class advert:
 		self.source = source
 		self.ident = ident
 
-
 STANDARD_SIZES = set(((250, 250), (300, 1050), (160, 600), (728, 90), 
         (300, 600), (970, 90), (234, 60), (125, 125), (300, 250), 
         (120, 240), (120, 90), (180, 160), (300, 100), (970, 250), 
@@ -31,11 +33,8 @@ STANDARD_SIZES = set(((250, 250), (300, 1050), (160, 600), (728, 90),
         (240, 400), (180, 150), (120, 600), (720, 300), (976, 40),
         (180, 900), (970, 90)))
 
-
-
 def handle_frames(iframe):
 	frame = iframe
-	#print("This iframe has " , len(iframe_embed) ," embeded iframes in it")
 	try:
 		image = driver.find_element_by_tag_name("img")	
 		print ('image found')
@@ -81,7 +80,7 @@ def handle_frames(iframe):
 
 def is_it_an_ad(width, height):
     if (width, height) == (1,1):
-    	print('tracking pixel')	
+    	print('web beacon')	
     	return -1
     elif (width, height) not in STANDARD_SIZES:
     	print('Not an ad')
@@ -96,7 +95,7 @@ if __name__ == "__main__":
 	chrome_options.add_argument("--window-size=1920,1080")
 
 
-	site = 'https://www.w3schools.com/python/'
+	site = 'https://www.accuweather.com'
 	directory = "w3schools/" #Relative to script location
 	if not os.path.exists(directory):
 	    os.makedirs(directory)
@@ -104,9 +103,21 @@ if __name__ == "__main__":
 	driver = webdriver.Chrome('/usr/local/bin/chromedriver' , chrome_options=chrome_options)
 	driver.get(site)
 	time.sleep(5)
+
+	# Get scroll height
+	# last_height = driver.execute_script("return document.body.scrollHeight")
+	# while SCROLL_AMOUNT > 0:
+	# 	# Scroll down to bottom
+	# 	y = 540
+	# 	driver.execute_script("window.scrollTo(0, Y)")
+	# 	y += 540
+	# 	#Wait to load page
+	# 	time.sleep(SCROLL_PAUSE_TIME)
+	# 	SCROLL_AMOUNT -= 1
+	time.sleep(2)
 	innerHTML = driver.execute_script("return document.body.innerHTML")
 
-
+	
 	#soup = BeautifulSoup(driver.page_source, 'html.parser')
 	#iframes_s = soup.find_all('iframe')
 	iframes = driver.find_elements_by_tag_name("iframe")
@@ -183,102 +194,8 @@ if __name__ == "__main__":
 	time.sleep(5) 					# time to make sure page downloads
 	print("HTML Saved...")
 
+	images = driver.find_elements_by_tag_name('img')
+	for image in images:
+	    print(image.get_attribute('src'))
 
-	# iframes_s = soup.find_all('iframe')
-	# print (len(iframes_s), ' iframes\n')
-	# for frame in iframes_s:
-	# 		# print ('xxxxxxxxxxxxxxxxxxxxxxxxx')
-	# 		# print (frame)
-	# 	iframe_s_f.write(str(frame))
-	# 	iframe_s_f.write("****END****\n\n")
-	# 	print ('xxxxxxxxxxxxxxxxxxxxxxxxx')
-	# 	try:
-	# 		if frame.attrs['height'] != 0:
-	# 			print ('xxxxxxxxxxxxxxxxxxxxxxxxx')
-	# 			print (frame)
-	# 			print ('xxxxxxxxxxxxxxxxxxxxxxxxx')
-				
-	# 			try:
-	# 				name = frame.attrs['name']
-	# 				print ('name:' , name)
-	# 			except:
-	# 				print ('no name')
-	# 			try:
-	# 				source = frame.attrs['src']
-	# 				print ('source:' , source)
-	# 			except:
-	# 				print ('no source')
-	# 			try:
-	# 				height = frame.attrs['height']
-	# 				print ('height:' , height)
-	# 			except:
-	# 				print ('no height')
-	# 			try:
-	# 				width = frame.attrs['width']
-	# 				print ('width:' , width)
-	# 			except:
-	# 				print ('no width')
-
-	# 		else:
-	# 			print ('ZERO H')	
-	# 	except:
-	# 		print ('BAD READ')
-	# 	print ('xxxxxxxxxxxxxxxxxxxxxxxxx')
-	# 	print ('\n')
-		# image = frame.attrs['img']
-		# print (image)
-
-
-	# def get_attrs(iframe):
-	# 	try:
-	# 		name = frame.attrs['name']
-	# 		print ('name:' , name)
-	# 	except:
-	# 		print ('no name')
-	# 	try:
-	# 		source = frame.attrs['src']
-	# 		print ('source:' , source)
-	# 	except:
-	# 		print ('no source')
-	# 	try:
-	# 		height = frame.attrs['height']
-	# 		print ('height:' , height)
-	# 	except:
-	# 		print ('no height')
-	# 	try:
-	# 		width = frame.attrs['width']
-	# 		print ('width:' , width)
-	# 	except:
-	# 		print ('no width')
-
-	#driver.quit()
-
-
-
-	# Make a function that takes ifranes and uses soup to find stiff in it 
-	# get the dimension of the ads and then use the existing list ot check if it is an ad ornah
-	# use pyautogui to save the ads as jpeg, but how do we tag them tehn?
-	# save iframe attricutes in a neat usable manner for further classification
-	# find a ocr lobrary to get text from ads and sort them by languagess
-	# sift through iframes files 
-
-
-	# img_tags = soup.find_all('img')
-
-	# urls = [img['src'] for img in img_tags]
-
-	# for url in urls:
-	#     filename = re.search(r'/([\w_-]+[.](jpg|gif|png))$', url)
-
-	#     with open(os.path.join(directory, filename.group(1)), 'wb') as f:
-	#         if 'http' not in url:
-	#             url = '{}{}'.format(site, url)
-	#         response = requests.get(url)
-	#         f.write(response.content)
-
-	# images = driver.find_elements_by_tag_name('img')
-	# for image in images:
-	#     print(image.get_attribute('src'))
-
-	# for link in soup.find_all('a', href=True):
-	#     print(link['href'])
+	print(len(images), " images found")
