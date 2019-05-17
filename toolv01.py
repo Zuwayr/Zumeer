@@ -1,15 +1,21 @@
 from bs4 import BeautifulSoup
 import re
-import pyautogui
+#import pyautogui
 import csv
 import time
 import requests
 from selenium import webdriver
+from tbselenium.tbdriver import TorBrowserDriver
 from selenium.webdriver.chrome.options import Options
+from file_read_backwards import FileReadBackwards
 import os
 import sys
-import time
 from PIL import Image
+import logging
+import shutil
+from urllib.parse import urlparse
+import filetype
+import argparse
 
 # handle nested iframes
 SCROLL_PAUSE_TIME = 1
@@ -127,7 +133,6 @@ def handle_frames(iframe, iframe_source):
 
 	return retclassList
 
-
 def use_regex(iframe):
 	frame = str(iframe)
 	pattern =  ';img(.*?)/&gt'
@@ -150,7 +155,6 @@ def use_regex(iframe):
 		ret = advert('regex_ad', 'eyedee', 'title', width, height, src.group(0), ad_hai)
 		if ad_hai:
 			print("reg ad found")
-			# print(matches)
 		else:
 			print("reg: not ad")
 	except:
@@ -160,14 +164,14 @@ def use_regex(iframe):
 	return ret
 
 def is_it_an_ad(width, height):
-    if (width, height) in BEACON_SIZES:
+    if width == 1 and height == 1:
     	print('web beacon')	
     	return -1
     elif (width, height) not in STANDARD_SIZES:
     	print('Not an ad')
     	return 0
     else:
-    	print('we has ad')
+    	print('We have an ad')
     	return 1
 
 def scroll_page(driver):
@@ -192,24 +196,98 @@ def scroll_page(driver):
 		time.sleep(SCROLL_PAUSE_TIME)
 		Y += 540
 
+def set_exit_relay(code):
+	torrc_file_path = "/etc/tor/torrc" 
+	torrc_org = "/etc/tor/torrc_org" 
+	#torrc_file_path = "torrc" 
+	#torrc_org = "torrc_org" 
+	
+	if not os.path.exists(torrc_file_path):
+			return -1
+
+	if not os.path.exists(torrc_org): # create initial copy
+		read_file = open(torrc_file_path, "r")
+		copy = read_file.read()
+		read_file.close()
+		write_file = open(torrc_org, 'a')
+		write_file.write(copy)
+		write_file.close()
+
+	read_file = open(torrc_org, "r")
+	copy = read_file.read()
+	read_file.close()
+
+	os.remove(torrc_file_path)
+	
+	wtf = "ExitNodes {" + code + "} StrictNodes 1"
+	file = open(torrc_file_path, "a")
+	file.write(copy)
+	file.write(wtf)
+	file.close()
+	return 1
+
+
 if __name__ == "__main__":
 
-	chrome_options = Options()
-	chrome_options.add_argument("--window-size=1920,1080")
+	parser = argparse.ArgumentParser()
+	parser.add_argument("browser_select", type = int, help="Please choose 1 for Chrome or 2 for Tor")
+	args = parser.parse_args()
 
+	selection = int(args.browser_select)
 
-	#site = 'https://www.w3schools.com/python/'
-	site = 'https://www.espncricinfo.com'
-
-
-	driver = webdriver.Chrome('/usr/local/bin/chromedriver' , chrome_options=chrome_options)
-	print ("Starting Chrome...")
-	driver.get(site)
-	time.sleep(5)
+	#site = 'https://www.geeksforgeeks.org/rename-multiple-files-using-python/'
+	site = 'https://www.w3schools.com/python/'
+	#site = 'https://www.espncricinfo.com'
 	
-	scroll_page(driver) # scroll the pafe
+	if selection == 1:
+		domain_parsed = urlparse(site)
+		print("Domain is: ", domain_parsed.hostname)
+		domain = domain_parsed.hostname +"_chrome"
+		if not os.path.exists(domain):
+			os.makedirs(domain)
+
+		chrome_options = Options()
+		chrome_options.add_argument("--window-size=1920,1080")
+		driver = webdriver.Chrome('/usr/local/bin/chromedriver' , chrome_options=chrome_options)
+		print ("Starting Chrome...")
+
+	elif selection == 2:
+		cc = "fr"
+		domain_parsed = urlparse(site)
+		print("Domain is: ", domain_parsed.hostname)
+		domain = domain_parsed.hostname +"_tor_"+cc
+		if not os.path.exists(domain):
+			os.makedirs(domain)
+
+		tbpath = '/home/kasai/.local/share/torbrowser/tbb/x86_64/tor-browser_en-US'
+		driver = TorBrowserDriver(tbpath)
+		print ("Starting Tor...")
+
+	elif selection == 3:
+		cc = input("Enter country code to set: ")
+		done = set_exit_relay(cc)
+		os.system("sudo service tor restart")
+		print(done)
+		exit()	
+	else:
+		sys.stderr.write("Please choose 1 for Chrome or 2 for Tor")
+
+	frames_folder = domain+"/Frames"
+	if not os.path.exists(frames_folder):
+	    os.makedirs(frames_folder)
+
+	ads_folder = domain+"/Ads"
+	if not os.path.exists(ads_folder):
+	    os.makedirs(ads_folder)
+
+	start_time = time.time()
+	driver.get(site)
+	end_time = time.time()
 	time.sleep(2)
-	#innerHTML = driver.execute_script("return document.body.innerHTML") # this runs when the page is fully loaded, we dont need it, just use it to make sure that we save the complete page
+	plt = round(end_time-start_time, 3)
+	
+	scroll_page(driver) # scroll the page
+	time.sleep(2)
 
 	frame_count = 0
 	image_count = 0
@@ -217,31 +295,29 @@ if __name__ == "__main__":
 	tracking_pix = 0
 	processed_list_frame = []
 	processed_list_img = []
-	yes = 0
 	emb = 0
 
 	iframes = driver.find_elements_by_tag_name("iframe")
 	print("Processing iframes\n")
+	
 	for frame in iframes:
-		yes = 0
-		frame_count +=1
+		frame_count += 1
 		driver.switch_to.default_content()
 		try:
 			driver.switch_to.frame(frame)
 			print("Frame found")
-			yes = 1
 		except:
-			yes = 0
 			print("Not a frame")
+			continue
 		try:
 			embed_frames = frame.find_elements_by_tag_name("iframe")
 			emb = 1
-			print("embed_frames found")
+			print("Embed frames found")
 		except:
-			print("no embed_frames")
+			print("No embed frames")
 			emb = 0
 
-		if yes == 1 and emb == 1:
+		if emb == 1:
 			for emb_fram in embed_frames:
 				out = handle_frames(emb_fram)
 				if out.ident == 1 or out.ident == -1:
@@ -249,28 +325,26 @@ if __name__ == "__main__":
 					processed_list_frame.append(things)
 
 			iframe_source = driver.page_source
-			output_f = "driverFrames" + str(frame_count)+ ".txt"
+			output_f = frames_folder + "/driverFrames" + str(frame_count)+ ".txt"
 			iframe_d_f = open(output_f, "w+")
 			iframe_d_f.write(iframe_source)
 			iframe_d_f.close()
-			#print(iframe_source)
+			
 			print ('xxxxxxxxxxxx PROCESSING FRAME', frame_count, 'xxxxxxxxxxx')
-			#print('current url: ', frame.get_attribute("src")) #returns iframe URL
 			out = handle_frames(frame)
 			for things in out:
 				if things.ident == 1 or things.ident == -1:
 					print("adding to list")
 					processed_list_frame.append(things)
 				print ('xxxxxxxxxxxxxxxxxxxxxxxxx\n')
-		elif yes == 1 and emb == 0:
+		
+		elif emb == 0:
 			iframe_source = driver.page_source
-			output_f = "driverFrames" + str(frame_count)+ ".txt"
+			output_f = frames_folder + "/driverFrames" + str(frame_count)+ ".txt"
 			iframe_d_f = open(output_f, "w+")
 			iframe_d_f.write(iframe_source)
 			iframe_d_f.close()
-			#print(iframe_source)
 			print ('xxxxxxxxxxxx PROCESSING FRAME', frame_count, 'xxxxxxxxxxx')
-			#print('current url: ', frame.get_attribute("src")) #returns iframe URL
 			out = handle_frames(frame, iframe_source)
 			for things in out:
 				if things.ident == 1 or things.ident == -1:
@@ -278,9 +352,6 @@ if __name__ == "__main__":
 					processed_list_frame.append(things)
 					print ('xxxxxxxxxxxxxxxxxxxxxxxxx')
 			print ('xxxxxxxxxxx  FRAME PROCESSED  xxxxxxxxx\n')
-			# else:
-			# 	print('skipping')
-
 
 	print('\n')
 	time.sleep(1)
@@ -297,20 +368,13 @@ if __name__ == "__main__":
 					print("adding to list")
 					processed_list_frame.append(things)
 				print ('xxxxxxxxxxxxxxxxxxxxxxxxx\n')
-			else:
-				print('skipping')
 		except:
 				print('skipping')
 
-	print('\n\n')
-
 	print("items processed: ", len(processed_list_frame))
 	    
-	oldsrc = 'shit'
-	#print(len(processed_list_frame))
+	oldsrc = 'placeholder'
 	for ads in processed_list_frame:
-		#output = str(ads.ident) + " " + str(ads.name) + " " + str(ads.eyedee) + " " + str(ads.title) + " " + str(ads.width) + " " + str(ads.height) + " " + str(ads.source)   
-		#print("yes")
 		if ads.ident == 1 and ads.source != oldsrc: #ad_hai
 			oldsrc = ads.source
 			ad_count += 1
@@ -318,55 +382,32 @@ if __name__ == "__main__":
 			print("AD src:", ads.source)
 			print("AD width:", ads.width)
 			print("AD height:", ads.height, "\n")
-
+			filename = ads_folder+"/"+str(ad_count)+"_AD_.png"
+			r = requests.get(ads.source, stream=True)
+			if r.status_code == 200:
+				with open(filename, 'wb') as f:
+					r.raw.decode_content = True
+					shutil.copyfileobj(r.raw, f)
+				kind = filetype.guess(filename)
+				if kind.extension != "png":
+					newname = filename[:-3]+ str(kind.extension)
+					os.rename(filename, newname)
 		elif ads.ident == -1:
-			tracking_pix +=1
-
-	# oldsrc = 'shit'
-	# print("\n \n")
-	# #print(len(processed_list_frame))
-	# for ads in processed_list_frame:
-	# 	#output = str(ads.ident) + " " + str(ads.name) + " " + str(ads.eyedee) + " " + str(ads.title) + " " + str(ads.width) + " " + str(ads.height) + " " + str(ads.source)   
-	# 	#print("yes")
-	# 	if ads.ident == 1: #and ads.source != oldsrc: #ad_hai
-	# 		#oldsrc = ads.source
-	# 		ad_count += 1
-	# 		print("AD number:", ad_count)
-	# 		print("AD src:", ads.source)
-	# 		print("AD width:", ads.width)
-	# 		print("AD height:", ads.height, "\n")
-
-	# 	elif ads.ident == -1:
-	# 		tracking_pix +=1
-
+			tracking_pix += 1
 
 	for ads in processed_list_img:
-		#output = str(ads.ident) + " " + str(ads.name) + " " + str(ads.eyedee) + " " + str(ads.title) + " " + str(ads.width) + " " + str(ads.height) + " " + str(ads.source)   
-		#print(output)
-		#print("yesir")	
 		if ads.ident == 1: #ad_hai
 			ad_count += 1
 		elif ads.ident == -1:
-			tracking_pix +=1
+			tracking_pix += 1
 
-	
 	print("\n\n")
+	print("Page load time: ", plt,"s")
 	print("Frames found: ", frame_count)
-	#print("Images found:", len(images))
+	print("Images found:", len(images))
 	print("Ads found: ", ad_count)
 	print("Tracking pixels found: ", tracking_pix)
 	print("\n\n")
-
-	# print("Saving data ...")
-	# outfile_loc = directory+"_output.txt"
-	# resultFile = open(outfile_loc,'w+')
-	# output = "Identity Name ID Title Width Height Source"   
-	# resultFile.write(output)
-	# for ads in processed_list:
-	# 	output = str(ads.ident) + " " + str(ads.name) + " " + str(ads.eyedee) + " " + str(ads.title) + " " + str(ads.width) + " " + str(ads.height) + " " + str(ads.source)   
-	# 	#print(output)
-	# 	resultFile.write(output)
-	# print("Data saved ...")
 
 	# pyautogui.hotkey('ctrl', 's')
 	# time.sleep(1)
